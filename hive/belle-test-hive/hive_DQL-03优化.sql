@@ -16,6 +16,19 @@ row format delimited fields terminated by '\t';
 drop table dept_partition;
 
 select * from dept_partition;
+describe  formatted  dept_partition;
+ALTER TABLE bdc_dws.dws_day_org_pro_inv_ds DROP PARTITION (partition_day = '2018-01-03');
+ALTER TABLE dept_partition DROP PARTITION (day <= '20220402');
+
+create table dept_partition_bak
+as select * from dept_partition;
+
+create table dept_partition_bak
+like  dept_partition;
+
+select * from dept_partition_bak;
+
+insert overwrite table  dept_partition_bak select * from dept_partition;
 
 select
     *
@@ -459,3 +472,130 @@ select count(1) from log_orc_com; -- 1 row retrieved starting from 1 in 171 ms (
 
 explain EXTENDED  select * from log_orc_com limit 2;
 --  学会使用 explain 查看执行计划
+
+
+
+-- 开启Map端聚合参数设置
+-- （1）是否在Map端进行聚合，默认为True
+-- set hive.map.aggr = true;
+-- （2）在Map端进行聚合操作的条目数目
+-- set hive.groupby.mapaggr.checkinterval = 100000;
+-- （3）有数据倾斜的时候进行负载均衡（默认是false）
+-- set hive.groupby.skewindata = true;
+--  即两阶段聚合
+-- 当选项设定为true，生成的查询计划会有两个MR Job。
+-- 第一个MR Job中，Map的输出结果会随机分布到Reduce中，每个Reduce做部分聚合操作，并输出结果，这样处理的结果是相同的Group By Key有可能被分发到不同的Reduce中，从而达到负载均衡的目的；
+-- 第二个MR Job再根据预处理的数据结果按照Group By Key分布到Reduce中（这个过程可以保证相同的Group By Key被分布到同一个Reduce中），最后完成最终的聚合操作（虽然能解决数据倾斜，但是不能让运行速度的更快）。
+
+
+
+-- Hive 自 0.14.0 开始，加入了一项 "Cost based Optimizer" 来对HQL执行计划进行优化，这个功能通过"hive.cbo.enable" 来开启。在Hive 1.1.0之后，这个feature是默认开启的，它可以自动优化HQL中多个Join的顺序，并选择合适的Join算法。
+-- CBO，成本优化器，代价最小的执行计划就是最好的执行计划。传统的数据库，成本优化器做出最优化的执行计划是依据统计信息来计算的。
+-- Hive的成本优化器也一样，Hive在提供最终执行前，优化每个查询的执行逻辑和物理执行计划。这些优化工作是交给底层来完成的。根据查询成本执行进一步的优化，从而产生潜在的不同决策：如何排序连接，执行哪种类型的连接，并行度等等。
+-- 要使用基于成本的优化（也称为 CBO），请在查询开始设置以下参数：
+-- set hive.cbo.enable=true;
+-- set hive.compute.query.using.stats=true;
+-- set hive.stats.fetch.column.stats=true;
+-- set hive.stats.fetch.partition.stats=true;
+
+
+
+-- explain select
+--     b.id
+-- from bigtable b
+-- join (
+--     select
+--         id
+--     from bigtable
+--     where id <= 10
+-- ) o
+-- on b.id = o.id;
+
+-- 使用为此下推， 自动使用的
+
+
+show tables;
+
+select * from location;
+
+explain
+select
+    e.ename,
+    d.dname,
+    l.loc_name
+from emp e
+join dept d
+on d.deptno = e.deptno
+join location l
+on d.loc = l.loc
+where e.empno <7521 ;
+
+explain
+select
+    e.ename,
+    d.dname,
+    l.loc_name
+from (select * from emp
+    where empno < 7521)e
+join dept d
+on d.deptno = e.deptno
+join location l
+on d.loc = l.loc;
+
+
+
+-- 大表与大表JOIN
+-- 使用打散加扩容方式解决数据倾斜问题。
+-- 选择其中较大的表做打散处理：
+-- hive (default)>
+-- select
+--     *,
+--     concat(id,'-','0 or 1 or 2')
+-- from A;t1
+-- 选择其中较小的表做扩容处理：
+-- hive (default)>
+-- select
+--     *,
+--     concat(id,'-','0')
+-- from B
+-- union all
+--     select
+--         *,
+--         concat(id,'-','1')
+--     from B
+-- union all
+--     select
+--         *,
+--         concat(id,'-','2')
+--     from B;t2
+
+-- 在map执行前合并小文件，减少map数：CombineHiveInputFormat具有对小文件进行合并的功能（系统默认的格式）。HiveInputFormat没有对小文件合并功能。
+-- set hive.input.format= org.apache.hadoop.hive.ql.io.CombineHiveInputFormat;
+-- 2）在Map-Reduce的任务结束时合并小文件的设置：
+-- 在map-only任务结束时合并小文件，默认true。
+-- set hive.merge.mapfiles = true;
+-- 在map-reduce任务结束时合并小文件，默认false。
+-- set hive.merge.mapredfiles = true;
+-- 合并文件的大小，默认256M。
+-- set hive.merge.size.per.task = 268435456;
+-- 当输出文件的平均大小小于该值时，启动一个独立的map-reduce任务进行文件merge。
+-- set hive.merge.smallfiles.avgsize = 16777216;
+-- 12.5.1.3  Map端聚合
+-- set hive.map.aggr=true;相当于map端执行combiner
+
+
+-- 调整Reduce个数方法一
+-- （1）每个Reduce处理的数据量默认是256MB
+-- set hive.exec.reducers.bytes.per.reducer = 256000000
+-- （2）每个任务最大的reduce数，默认为1009
+-- set hive.exec.reducers.max = 1009
+-- （3）计算reducer数的公式
+-- N=min(参数2，总输入数据量/参数1)(参数2 指的是上面的1009，参数1值得是256M)
+-- 2）调整Reduce个数方法二
+-- 在hadoop的mapred-default.xml文件中修改。
+-- 设置每个job的Reduce个数。
+-- set mapreduce.job.reduces = 15;
+-- 3）Reduce个数并不是越多越好
+-- （1）过多的启动和初始化Reduce也会消耗时间和资源。
+-- （2）另外，有多少个Reduce，就会有多少个输出文件，如果生成了很多个小文件，那么如果这些小文件作为下一个任务的输入，则也会出现小文件过多的问题。
+-- 在设置Reduce个数的时候也需要考虑这两个原则：处理大数据量利用合适的Reduce数；使单个Reduce任务处理数据量大小要合适。

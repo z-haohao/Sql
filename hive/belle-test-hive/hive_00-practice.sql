@@ -217,3 +217,11 @@ select * from student;
 
 export table default.student to '/user/hive/warehouse/export/student';
 
+
+
+
+
+select  * from dept_partition
+where substr();
+
+drop table if exists dept_partition;

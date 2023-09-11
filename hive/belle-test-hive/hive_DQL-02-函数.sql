@@ -331,5 +331,171 @@ explode(split(category,',')) movie_info_tmp as category_name;
 --       注：窗口函数是一行一行走的
 -- 窗口函数练习
 
+desc extended business;
+create table business(
+    name string,        -- 顾客
+    orderdate string,  -- 下单日期
+    cost int             -- 购买金额
+)
+row format delimited fields terminated by ',';
+
+load data local inpath "/tmp/zhu.hh/data/business.txt"
+into table business;
+
+select * from business;
+-- 购买过的总人次并保留所有信息
+select name,
+       orderdate,
+       cost,
+       count(*) over (rows  between unbounded preceding and unbounded following) cn
+from business;
+
+--购买过的累加人次并保留所有信息
+select name,
+       orderdate,
+       cost,
+       count(*) over (rows between unbounded preceding and current row ) cn
+from business;
+
+-- 购买过的总人数 todo 注：窗口函数的执行次序是在group by 之后
+select name,
+       count(*) over (rows between unbounded preceding and unbounded following ) cn
+from business
+group by name;
 
 
+-- 2022年4月份购买过的顾客及总人数
+
+select name,
+       count(*) over (rows between unbounded preceding and unbounded following ) cn
+from business
+where substr(orderdate,1,7) = '2022-04'
+group by name;
+
+select name,
+       count(*) over () cn
+from business
+where substring(orderdate, 1, 7) = '2022-04'
+group by name;
+
+--    能发现窗口子句加与不加结果是一致，原因是窗口子句有默认值
+-- When ORDER BY is specified with missing WINDOW clause, the WINDOW specification defaults to RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW.
+--     当有order by 但是缺少窗口子句时  范围是 上无边界到当前行
+-- When both ORDER BY and WINDOW clauses are missing, the WINDOW specification defaults to ROW BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING.
+--      当order by 和 窗口子句都缺少时 范围 上无边界到下无边界
+
+-- 7）查询顾客的购买明细及月购买总额
+
+select name,
+       orderdate,
+       cost,
+        sum(cost) over(partition by month(orderdate))
+from business;
+
+-- 8）查询每个顾客的购买明细及购买总额
+
+select name,
+       orderdate,
+       cost,
+        sum(cost) over(partition by name)
+from business;
+
+-- 9）查询每个顾客每个月的购买明细及购买总额
+select name,
+       orderdate,
+       cost,
+        sum(cost) over(partition by name,month(orderdate))
+from business;
+
+
+-- 10）按照日期将cost累加并保留明细
+select name,
+       orderdate,
+       cost,
+        sum(cost) over(order by orderdate)
+from business;
+
+
+-- 11）按照日期将每个顾客cost累加并保留明细
+select name,
+       orderdate,
+       cost,
+        sum(cost) over(partition by name order by orderdate)
+from business;
+
+
+-- 12）求出每个顾客上一次和当前一次消费的和并保留明细
+select name,
+       orderdate,
+       cost,
+        sum(cost) over(partition by name order by orderdate rows between 1 preceding and current row )
+from business;
+
+
+-- 14）查询每个顾客购买明细以及上次的购买时间和下次购买时间
+-- 窗口函数是一行一行走的，走完上一行才走下一行，因此lag函数都是相对应的上一行到当前行
+select name,
+       orderdate,
+       cost,
+       lag(orderdate,1,'0000-00-00') over (partition by name order by orderdate),
+       lead(orderdate,1,'9999-99-99') over (partition by name order by orderdate)
+from business;
+
+-- 注：并不是所有函数都需要写窗口子句
+--    rank dense_rank ntile row_number lag lead 这些函数不支持窗口子句
+desc function extended lag;
+
+
+
+-- 购买过的累加人数
+select name,
+        count(*) over ( rows between unbounded preceding and  current row )
+from business
+group by name;
+
+
+
+-- 2022年4月份购买过的顾客及总人数 (不是每个人购买几次，即开窗函数，是在group后，得到的数据进行汇总得到的
+select name,
+        count(*) over ()
+from business
+where substr(orderdate,1,7) = '2022-04'
+group by name;
+
+
+-- 16）查询前20%时间的订单信息
+select *
+from (select name,
+       orderdate,
+       cost,
+       ntile(5) over (order by orderdate) n_g
+from business)t
+where t.n_g = 1;
+
+
+-- 按照消费金额进行排序
+select name,
+       orderdate,
+       cost,
+        rank() over (order by cost) rk,
+        dense_rank() over (order by cost) drk,
+        row_number() over (order by cost) drk
+from business;
+
+-- 注：排名分析函数中不需要写参数，会将排好序数据进行标号
+select name,
+       orderdate,
+       cost,
+        rank()       over (partition by name order by cost) rk,
+        dense_rank() over (partition by name order by cost) drk,
+        row_number() over (partition by name order by cost) drk
+from business;
+
+select 'a',
+(select count(*) from business  )as cn,
+(select count(*) from emp) as cc;
+
+
+-- select
+-- (SELECT COUNT(1)  FROM dc_ods.yg_order_tbl_after_sale_indemnity_ods ) as count ,
+-- (SELECT COUNT(1)  FROM dc_ods.yg_order_tbl_after_sale_indemnity_ods_bak20230802  ) as count

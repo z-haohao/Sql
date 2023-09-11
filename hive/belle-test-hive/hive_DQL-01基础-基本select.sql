@@ -247,9 +247,12 @@ sort by deptno;
 
 
 
+select *
+from default.business;
 
 
+show functions like  'date.*';
 
+desc function  extended day;
 
-
-
+--
