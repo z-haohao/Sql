@@ -65,3 +65,7 @@ SET GLOBAL time_zone = '+8:00';
 SET time_zone = '+8:00';
 
 SET time_zone = '0:00';
+
+SELECT table_name, table_comment
+FROM information_schema.tables
+WHERE table_schema = 'your_database_name';
