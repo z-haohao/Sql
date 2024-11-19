@@ -69,3 +69,9 @@ SET time_zone = '0:00';
 SELECT table_name, table_comment
 FROM information_schema.tables
 WHERE table_schema = 'your_database_name';
+
+
+mysqlbinlog --no-defaults -R -udct_sync -pPIfnswuIPruw7427hfjswhru74904 -P3306 -h10.10.217.97 --base64-output=decode-row --start-position="2"   --stop-position="300" -vv mysql-bin.003259
+
+
+mysqlbinlog -R  -udct_sync -pPIfnswuIPruw7427hfjswhru74904 -P3307 -h10.251.36.27 -v -v --base64-output=decode-rows binlog.006385 > ./binlog.log
